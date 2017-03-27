@@ -48,13 +48,13 @@ func initializeDatabaseJustInCase() {
 
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	file, header, ferr := r.FormFile("file")
-	defer file.Close()
 	if ferr != nil {
 		raven.CaptureError(ferr, nil)
 		w.WriteHeader(http.StatusInternalServerError)
 		io.WriteString(w, "Internal server error during file unfolding")
 		return
 	}
+	defer file.Close()
 	contents, cerr := ioutil.ReadAll(file)
 	if cerr != nil {
 		raven.CaptureError(cerr, nil)
@@ -66,13 +66,13 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("%#v\n", hash)
 	user, _, _ := r.BasicAuth()
 	db, derr := getDatabase()
-	defer db.Close()
 	if derr != nil {
 		raven.CaptureError(derr, nil)
     w.WriteHeader(http.StatusInternalServerError)
 		io.WriteString(w, "Internal server error during database connection")
 		return
 	}
+	defer db.Close()
 	var length = 1
 	for length <= len(hash) {
 		_, qerr := db.Query("INSERT INTO files (id, hash, uploader) VALUES ($1, $2, $3)", hash[:length], hash, user)
@@ -89,13 +89,13 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	ext := path.Ext(header.Filename)
 	out, oerr := os.Create(path.Join(getWarehouse(), hash[:length] + ext))
-	defer out.Close()
 	if oerr != nil {
 		raven.CaptureError(oerr, nil)
     w.WriteHeader(http.StatusInternalServerError)
 		io.WriteString(w, "Internal server error during file creation")
 		return
 	}
+	defer out.Close()
 	_, werr := out.Write(contents)
 	if werr != nil {
 		raven.CaptureError(werr, nil)
