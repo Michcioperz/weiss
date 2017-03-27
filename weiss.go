@@ -29,7 +29,7 @@ func getWarehouse() string {
 }
 
 func getDatabase() (*sql.DB, error) {
-	return sql.Open("postgres", "user=weiss dbname=weiss host=/run/postgresql/.s.PGSQL.5432")
+	return sql.Open("postgres", "user=weiss dbname=weiss host=/run/postgresql")
 }
 
 func initializeDatabaseJustInCase() {
