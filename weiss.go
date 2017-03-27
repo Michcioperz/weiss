@@ -39,7 +39,11 @@ func initializeDatabaseJustInCase() {
 		log.Panic(err)
 	}
 	defer db.Close()
-	db.Query("CREATE TABLE IF NOT EXISTS files (id CHARACTER VARYING(64) PRIMARY KEY UNIQUE, hash CHARACTER(64) UNIQUE, uploader TEXT, uploaded_when TIMESTAMP WITH TIME ZONE DEFAULT NOW())")
+	_, qerr := db.Query("CREATE TABLE IF NOT EXISTS files (id CHARACTER VARYING(64) PRIMARY KEY UNIQUE, hash CHARACTER(64) UNIQUE, uploader TEXT, uploaded_when TIMESTAMP WITH TIME ZONE DEFAULT NOW())")
+	if qerr != nil {
+		raven.CaptureErrorAndWait(qerr, nil)
+		log.Panic(qerr)
+	}
 }
 
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
