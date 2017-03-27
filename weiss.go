@@ -3,11 +3,12 @@ package main
 import (
 	"github.com/getsentry/raven-go"
 	"fmt"
+	"log"
+	"errors"
 	"net/http"
-	"os/exec"
 	"os"
-	"io"
 	"path"
+	"io"
 	"io/ioutil"
 	"database/sql"
 	"golang.org/x/crypto/sha3"
@@ -19,79 +20,99 @@ func getWarehouse() string {
 	if yes {
 		return env
 	}
-	env, yes := os.LookupEnv("VIRTUALENV")
+	env, yes = os.LookupEnv("VIRTUALENV")
 	if yes {
 		return env
 	}
-	env, yes := os.Getwd()
+	env, _ = os.Getwd()
 	return env
 }
 
-func getDatabase() {
+func getDatabase() (*sql.DB, error) {
 	return sql.Open("postgres", "user=weiss dbname=weiss")
 }
 
 func initializeDatabaseJustInCase() {
 	db, err := getDatabase()
+	if err != nil {
+		raven.CaptureErrorAndWait(err, nil)
+		log.Panic(err)
+	}
 	defer db.Close()
 	db.Query("CREATE TABLE IF NOT EXISTS files (id CHARACTER VARYING(64) PRIMARY KEY UNIQUE, hash CHARACTER(64) UNIQUE, uploader TEXT, uploaded_when TIMESTAMP WITH TIME ZONE DEFAULT NOW())")
 }
 
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
-	file, header, err := r.FormFile("file")
-	defer file.close()
-	if err != nil {
+	file, header, ferr := r.FormFile("file")
+	defer file.Close()
+	if ferr != nil {
+		raven.CaptureError(ferr, nil)
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write("Internal server error during file unfolding")
+		io.WriteString(w, "Internal server error during file unfolding")
 		return
 	}
-	var contents, err := ioutil.ReadAll(file)
-	if err != nil {
+	contents, cerr := ioutil.ReadAll(file)
+	if cerr != nil {
+		raven.CaptureError(cerr, nil)
     w.WriteHeader(http.StatusInternalServerError)
-		w.Write("Internal server error during file unfolding")
+		io.WriteString(w, "Internal server error during file unfolding")
 		return
 	}
-	hash = fmt.Sprintf("%x", sha3.Sum512(contents))
+	hash := fmt.Sprintf("%x", sha3.Sum512(contents))
 	user, _, _ := r.BasicAuth()
-	db, err := getDatabase()
+	db, derr := getDatabase()
 	defer db.Close()
-	if err != nil {
+	if derr != nil {
+		raven.CaptureError(derr, nil)
     w.WriteHeader(http.StatusInternalServerError)
-		w.Write("Internal server error during database connection")
+		io.WriteString(w, "Internal server error during database connection")
 		return
 	}
-	length := 1
-	while length <= 64 {
-		_, err := db.Query("INSERT INTO files (id, hash, uploader) VALUES ($1, $2, $3)", hash[:length], hash, user)
-		if err == nil {
+	var length = 1
+	for length <= 64 {
+		_, qerr := db.Query("INSERT INTO files (id, hash, uploader) VALUES ($1, $2, $3)", hash[:length], hash, user)
+		if qerr == nil {
 			break
 		}
 		length++
 	}
 	if length > 64 {
+		raven.CaptureError(errors.New("hash already there"), nil)
     w.WriteHeader(http.StatusInternalServerError)
-		w.Write("Internal server error during hash assignment")
+		io.WriteString(w, "Internal server error during hash assignment")
 		return
 	}
-	out, err := os.Create(path.Join(getWarehouse(), hash[:length] + path.Ext(header.Filename)))
+	ext := path.Ext(header.Filename)
+	out, oerr := os.Create(path.Join(getWarehouse(), hash[:length] + ext))
 	defer out.Close()
-	if err != nil {
+	if oerr != nil {
+		raven.CaptureError(oerr, nil)
     w.WriteHeader(http.StatusInternalServerError)
-		w.Write("Internal server error during file creation")
+		io.WriteString(w, "Internal server error during file creation")
 		return
 	}
-	_, err = out.Write(contents)
-	if err != nil {
+	_, werr := out.Write(contents)
+	if werr != nil {
+		raven.CaptureError(werr, nil)
     w.WriteHeader(http.StatusInternalServerError)
-		w.Write("Internal server error during file writing")
+		io.WriteString(w, "Internal server error during file writing")
 		return
 	}
 	http.Redirect(w, r, path.Join("/", "f", hash[:length] + ext), http.StatusFound)
 	return
 }
 
+func masterRelease() string {
+	data, err := ioutil.ReadFile(path.Join(".git", "refs", "heads", "master"))
+	if err != nil {
+		return string(data)
+	}
+	return "unidentified"
+}
+
 func main() {
+	raven.SetRelease(masterRelease())
 	initializeDatabaseJustInCase()
-	http.HandleFunc("/u", uploadHandler)
+	http.HandleFunc("/u", raven.RecoveryHandler(uploadHandler))
 	http.ListenAndServe(":9009", nil)
 }
