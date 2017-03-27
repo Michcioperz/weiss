@@ -39,7 +39,7 @@ func initializeDatabaseJustInCase() {
 		log.Panic(err)
 	}
 	defer db.Close()
-	_, qerr := db.Query("CREATE TABLE IF NOT EXISTS files (id CHARACTER VARYING PRIMARY KEY UNIQUE, hash CHARACTER(64) UNIQUE, uploader TEXT, uploaded_when TIMESTAMP WITH TIME ZONE DEFAULT NOW())")
+	_, qerr := db.Query("CREATE TABLE IF NOT EXISTS files (id CHARACTER VARYING PRIMARY KEY UNIQUE, hash TEXT UNIQUE, uploader TEXT, uploaded_when TIMESTAMP WITH TIME ZONE DEFAULT NOW())")
 	if qerr != nil {
 		raven.CaptureErrorAndWait(qerr, nil)
 		log.Panic(qerr)
@@ -74,15 +74,14 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var length = 1
-	for length <= 64 {
+	for length <= len(hash) {
 		_, qerr := db.Query("INSERT INTO files (id, hash, uploader) VALUES ($1, $2, $3)", hash[:length], hash, user)
 		if qerr == nil {
 			break
 		}
-		log.Print(qerr)
 		length++
 	}
-	if length > 64 {
+	if length > len(hash) {
 		raven.CaptureError(errors.New("hash already there"), nil)
     w.WriteHeader(http.StatusInternalServerError)
 		io.WriteString(w, "Internal server error during hash assignment")
