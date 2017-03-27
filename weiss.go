@@ -39,7 +39,7 @@ func initializeDatabaseJustInCase() {
 		log.Panic(err)
 	}
 	defer db.Close()
-	_, qerr := db.Query("CREATE TABLE IF NOT EXISTS files (id CHARACTER VARYING(64) PRIMARY KEY UNIQUE, hash CHARACTER(64) UNIQUE, uploader TEXT, uploaded_when TIMESTAMP WITH TIME ZONE DEFAULT NOW())")
+	_, qerr := db.Query("CREATE TABLE IF NOT EXISTS files (id CHARACTER VARYING PRIMARY KEY UNIQUE, hash CHARACTER(64) UNIQUE, uploader TEXT, uploaded_when TIMESTAMP WITH TIME ZONE DEFAULT NOW())")
 	if qerr != nil {
 		raven.CaptureErrorAndWait(qerr, nil)
 		log.Panic(qerr)
@@ -63,6 +63,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	hash := fmt.Sprintf("%x", sha3.Sum512(contents))
+	fmt.Printf("%#v\n", hash)
 	user, _, _ := r.BasicAuth()
 	db, derr := getDatabase()
 	defer db.Close()
