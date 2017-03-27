@@ -48,6 +48,7 @@ func initializeDatabaseJustInCase() {
 
 func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	file, header, ferr := r.FormFile("file")
+	ext := path.Ext(header.Filename)
 	if ferr != nil {
 		raven.CaptureError(ferr, nil)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -73,6 +74,26 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer db.Close()
+	existing, eqerr := db.Query("SELECT id FROM files WHERE hash = $1", hash)
+	if eqerr != nil {
+		raven.CaptureError(eqerr, nil)
+		w.WriteHeader(http.StatusInternalServerError)
+		io.WriteString(w, "Internal server error during database check")
+		return
+	}
+	defer existing.Close()
+	for existing.Next() {
+		var target_id string
+		serr := existing.Scan(&target_id)
+		if serr != nil {
+			raven.CaptureError(serr, nil)
+			w.WriteHeader(http.StatusInternalServerError)
+			io.WriteString(w, "Internal server error during database fetch")
+			return
+		}
+		http.Redirect(w, r, path.Join("/", "f", target_id + ext), http.StatusFound)
+		return
+	}
 	var length = 1
 	for length <= len(hash) {
 		_, qerr := db.Query("INSERT INTO files (id, hash, uploader) VALUES ($1, $2, $3)", hash[:length], hash, user)
@@ -87,7 +108,6 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, "Internal server error during hash assignment")
 		return
 	}
-	ext := path.Ext(header.Filename)
 	out, oerr := os.Create(path.Join(getWarehouse(), hash[:length] + ext))
 	if oerr != nil {
 		raven.CaptureError(oerr, nil)
