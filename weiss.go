@@ -78,6 +78,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 		if qerr == nil {
 			break
 		}
+		log.Print(qerr)
 		length++
 	}
 	if length > 64 {
