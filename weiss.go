@@ -1,18 +1,18 @@
 package main
 
 import (
-	"github.com/getsentry/raven-go"
-	"fmt"
-	"log"
+	"database/sql"
 	"errors"
+	"fmt"
+	"github.com/getsentry/raven-go"
+	_ "github.com/lib/pq"
+	"golang.org/x/crypto/sha3"
+	"io"
+	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"path"
-	"io"
-	"io/ioutil"
-	"database/sql"
-	"golang.org/x/crypto/sha3"
-	_ "github.com/lib/pq"
 )
 
 func getWarehouse() string {
@@ -59,7 +59,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	contents, cerr := ioutil.ReadAll(file)
 	if cerr != nil {
 		raven.CaptureError(cerr, nil)
-    w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
 		io.WriteString(w, "Internal server error during file unfolding")
 		return
 	}
@@ -69,7 +69,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	db, derr := getDatabase()
 	if derr != nil {
 		raven.CaptureError(derr, nil)
-    w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
 		io.WriteString(w, "Internal server error during database connection")
 		return
 	}
@@ -91,7 +91,7 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 			io.WriteString(w, "Internal server error during database fetch")
 			return
 		}
-		http.Redirect(w, r, path.Join("/", "f", target_id + ext), http.StatusFound)
+		http.Redirect(w, r, path.Join("/", "f", target_id+ext), http.StatusFound)
 		return
 	}
 	var length = 1
@@ -104,14 +104,14 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if length > len(hash) {
 		raven.CaptureError(errors.New("hash already there"), nil)
-    w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
 		io.WriteString(w, "Internal server error during hash assignment")
 		return
 	}
-	out, oerr := os.Create(path.Join(getWarehouse(), hash[:length] + ext))
+	out, oerr := os.Create(path.Join(getWarehouse(), hash[:length]+ext))
 	if oerr != nil {
 		raven.CaptureError(oerr, nil)
-    w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
 		io.WriteString(w, "Internal server error during file creation")
 		return
 	}
@@ -119,11 +119,11 @@ func uploadHandler(w http.ResponseWriter, r *http.Request) {
 	_, werr := out.Write(contents)
 	if werr != nil {
 		raven.CaptureError(werr, nil)
-    w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
 		io.WriteString(w, "Internal server error during file writing")
 		return
 	}
-	http.Redirect(w, r, path.Join("/", "f", hash[:length] + ext), http.StatusFound)
+	http.Redirect(w, r, path.Join("/", "f", hash[:length]+ext), http.StatusFound)
 	return
 }
 
